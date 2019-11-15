@@ -30,6 +30,22 @@ public protocol RequestCreator {
                                                              sendOperationIdentifiers: Bool,
                                                              serializationFormat: JSONSerializationFormat.Type,
                                                              manualBoundary: String?) throws -> MultipartFormData
+  
+  /// Creates multi-part form data to send with a request
+  ///
+  /// - Parameters:
+  ///   - operation: The operation to create the data for.
+  ///   - files: An array of files to use.
+  ///   - sendOperationIdentifiers: True if operation identifiers should be sent, false if not.
+  ///   - serializationFormat: The format to use to serialize data.
+  ///   - manualBoundary: [optional] A manual boundary to pass in. A default boundary will be used otherwise.
+  /// - Returns: The created form data
+  /// - Throws: Errors creating or loading the form  data
+  func his_requestMultipartFormData<Operation: GraphQLOperation>(for operation: Operation,
+                                                             files: [GraphQLFile],
+                                                             sendOperationIdentifiers: Bool,
+                                                             serializationFormat: JSONSerializationFormat.Type,
+                                                             manualBoundary: String?) throws -> MultipartFormData
 }
 
 extension RequestCreator {
@@ -160,4 +176,83 @@ extension RequestCreator {
 public struct ApolloRequestCreator: RequestCreator {
   // Internal init methods cannot be used in public methods
   public init() { }
+}
+
+extension RequestCreator
+{
+  /// Creates multi-part form data to send with a request
+  ///
+  /// - Parameters:
+  ///   - operation: The operation to create the data for.
+  ///   - files: An array of files to use.
+  ///   - sendOperationIdentifiers: True if operation identifiers should be sent, false if not.
+  ///   - serializationFormat: The format to use to serialize data.
+  ///   - manualBoundary: [optional] A manual boundary to pass in. A default boundary will be used otherwise.
+  /// - Returns: The created form data
+  /// - Throws: Errors creating or loading the form  data
+  public func his_requestMultipartFormData<Operation: GraphQLOperation>(for operation: Operation,
+                                                                    files: [GraphQLFile],
+                                                                    sendOperationIdentifiers: Bool,
+                                                                    serializationFormat: JSONSerializationFormat.Type,
+                                                                    manualBoundary: String?) throws -> MultipartFormData {
+    let formData: MultipartFormData
+
+    if let boundary = manualBoundary {
+      formData = MultipartFormData(boundary: boundary)
+    } else {
+      formData = MultipartFormData()
+    }
+    
+    // Make sure all fields for files are set to null, or the server won't look
+    // for the files in the rest of the form data
+    let fieldsForFiles = Set(files.map { $0.fieldName })
+    var fields = requestBody(for: operation, sendOperationIdentifiers: sendOperationIdentifiers)
+    var variables = fields["variables"] as? GraphQLMap ?? GraphQLMap()
+    for fieldName in fieldsForFiles {
+      if
+        let value = variables[fieldName],
+        let arrayValue = value as? [JSONEncodable] {
+        let updatedArray: [JSONEncodable?] = arrayValue.map { _ in nil }
+        variables.updateValue(updatedArray, forKey: fieldName)
+      } else {
+        variables.updateValue(nil, forKey: fieldName)
+      }
+    }
+    fields["variables"] = variables
+    
+    for (name, data) in fields
+    {
+        guard let _data = data else
+        {
+            continue
+        }
+        
+        if let data = _data as? GraphQLMap
+        {
+            let data = try! serializationFormat.serialize(value: data)
+            formData.appendPart(data: data, name: name)
+        }
+        else if let data = _data as? String,
+            data.isEmpty == false
+        {
+            try formData.appendPart(string: data, name: name)
+        }
+        else
+        {
+            try formData.appendPart(string: data.debugDescription, name: name)
+        }
+    }
+    
+    for file in files
+    {
+      formData.appendPart(
+        inputStream: try file.generateInputStream(),
+        contentLength: file.contentLength,
+        name: file.fieldName,
+        contentType: file.mimeType,
+        filename: file.originalName)
+    }
+    
+    return formData
+  }
 }

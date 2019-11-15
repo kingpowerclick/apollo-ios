@@ -301,3 +301,36 @@ private final class FetchQueryOperation<Query: GraphQLQuery>: AsynchronousOperat
     networkTask?.cancel()
   }
 }
+
+extension ApolloClient
+{
+  @discardableResult
+  public func his_upload<Operation: GraphQLOperation>(
+    operation: Operation,
+    context: UnsafeMutableRawPointer? = nil,
+    files: [GraphQLFile],
+    queue: DispatchQueue = .main,
+    resultHandler: GraphQLResultHandler<Operation.Data>? = nil) -> Cancellable
+  {
+    let wrappedHandler = wrapResultHandler(resultHandler, queue: queue)
+    guard let uploadingTransport = self.networkTransport as? UploadingNetworkTransport else
+    {
+      assertionFailure("Trying to upload without an uploading transport. Please make sure your network transport conforms to `UploadingNetworkTransport`.")
+      wrappedHandler(.failure(ApolloClientError.noUploadTransport))
+      return EmptyCancellable()
+    }
+    
+    return uploadingTransport.his_upload(
+      operation: operation,
+      files: files) { [weak self] result in
+        guard let self = self else
+        {
+          return
+        }
+        self.handleOperationResult(
+          shouldPublishResultToStore: true,
+          context: context, result,
+          resultHandler: wrappedHandler)
+    }
+  }
+}

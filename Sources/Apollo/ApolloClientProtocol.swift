@@ -74,7 +74,23 @@ public protocol ApolloClientProtocol: class {
                                            files: [GraphQLFile],
                                            queue: DispatchQueue,
                                            resultHandler: GraphQLResultHandler<Operation.Data>?) -> Cancellable
-
+  
+  /// Uploads the given files with the given operation.
+  ///
+  /// - Parameters:
+  ///   - operation: The operation to send
+  ///   - context: [optional] A context to use for the cache to work with results. Should default to nil.
+  ///   - files: An array of `GraphQLFile` objects to send.
+  ///   - queue: A dispatch queue on which the result handler will be called. Should default to the main queue.
+  ///   - completionHandler: The completion handler to execute when the request completes or errors
+  /// - Returns: An object that can be used to cancel an in progress request.
+  /// - Throws: If your `networkTransport` does not also conform to `UploadingNetworkTransport`.
+  func his_upload<Operation: GraphQLOperation>(operation: Operation,
+                                           context: UnsafeMutableRawPointer?,
+                                           files: [GraphQLFile],
+                                           queue: DispatchQueue,
+                                           resultHandler: GraphQLResultHandler<Operation.Data>?) -> Cancellable
+  
   /// Subscribe to a subscription
   ///
   /// - Parameters:
